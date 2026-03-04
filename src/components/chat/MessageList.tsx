@@ -2,8 +2,44 @@
 
 import { Message } from "ai";
 import { cn } from "@/lib/utils";
-import { User, Bot, Loader2 } from "lucide-react";
+import { User, Bot, Loader2, FilePlus, FileEdit, FileSearch, Trash2, ArrowRightLeft } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+
+function getBasename(path: unknown): string | null {
+  if (!path) return null;
+  const s = String(path);
+  return s.split("/").filter(Boolean).pop() ?? s;
+}
+
+function makeLabel(past: string, present: string, filename: string | null, isDone: boolean): string {
+  if (filename) return isDone ? `${past} ${filename}` : `${present} ${filename}...`;
+  return isDone ? `${past} file` : `${present} file...`;
+}
+
+function getToolInfo(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  isDone: boolean
+): { label: string; Icon: React.ElementType } {
+  const filename = getBasename(args?.path);
+  const command = args?.command as string | undefined;
+
+  if (toolName === "str_replace_editor") {
+    if (command === "create") return { label: makeLabel("Created", "Creating", filename, isDone), Icon: FilePlus };
+    if (command === "str_replace" || command === "insert") return { label: makeLabel("Edited", "Editing", filename, isDone), Icon: FileEdit };
+    if (command === "view") return { label: makeLabel("Read", "Reading", filename, isDone), Icon: FileSearch };
+  }
+
+  if (toolName === "file_manager") {
+    if (command === "rename") {
+      const newFilename = getBasename(args?.new_path);
+      return { label: isDone ? (newFilename ? `Renamed to ${newFilename}` : "Renamed file") : (filename ? `Renaming ${filename}...` : "Renaming file..."), Icon: ArrowRightLeft };
+    }
+    if (command === "delete") return { label: makeLabel("Deleted", "Deleting", filename, isDone), Icon: Trash2 };
+  }
+
+  return { label: isDone ? toolName : `${toolName}...`, Icon: FileEdit };
+}
 
 interface MessageListProps {
   messages: Message[];
@@ -74,23 +110,26 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                                 <span className="text-sm text-neutral-700">{part.reasoning}</span>
                               </div>
                             );
-                          case "tool-invocation":
+                          case "tool-invocation": {
                             const tool = part.toolInvocation;
+                            const isDone = !!(tool.state === "result" && tool.result);
+                            const { label, Icon } = getToolInfo(
+                              tool.toolName,
+                              tool.args as Record<string, unknown> | undefined,
+                              isDone
+                            );
                             return (
-                              <div key={partIndex} className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 bg-neutral-50 rounded-lg text-xs font-mono border border-neutral-200">
-                                {tool.state === "result" && tool.result ? (
-                                  <>
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                    <span className="text-neutral-700">{tool.toolName}</span>
-                                  </>
+                              <div key={partIndex} className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 bg-neutral-50 rounded-lg text-xs border border-neutral-200">
+                                {isDone ? (
+                                  <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
                                 ) : (
-                                  <>
-                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                    <span className="text-neutral-700">{tool.toolName}</span>
-                                  </>
+                                  <Loader2 className="w-3 h-3 animate-spin text-blue-600 flex-shrink-0" />
                                 )}
+                                <Icon className="w-3 h-3 text-neutral-500 flex-shrink-0" />
+                                <span className="text-neutral-700">{label}</span>
                               </div>
                             );
+                          }
                           case "source":
                             return (
                               <div key={partIndex} className="mt-2 text-xs text-neutral-500">
